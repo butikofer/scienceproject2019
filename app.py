@@ -21,6 +21,9 @@ cols = 10
 rows = 10
 build_time_limit = 120 # seconds
 
+def wrap_speak(speak_str):
+	return """<speak><voice name="Matthew">""" + speak_str + """</voice></speak>"""
+
 class LaunchRequestHandler(AbstractRequestHandler):
     """Handler for Skill Launch."""
     def can_handle(self, handler_input):
@@ -32,7 +35,9 @@ class LaunchRequestHandler(AbstractRequestHandler):
         # type: (HandlerInput) -> Response
         handler_input.attributes_manager.session_attributes[pos] = (0,0)
         handler_input.attributes_manager.session_attributes[grid] = [[0]*cols]*rows
-        speak_output = "Let's build something before the monsters come. You are on a {} by {} grid. What's your first order?".format(cols, rows)
+        speak_output = wrap_speak("""
+		<audio src="soundbank://soundlibrary/explosions/explosions/explosions_03"/>
+		Let's build something before the monsters come. You are on a {} by {} grid. What's your first order?""".format(cols, rows))
 
         return (
             handler_input.response_builder
@@ -42,23 +47,6 @@ class LaunchRequestHandler(AbstractRequestHandler):
         )
 
 
-class HelloWorldIntentHandler(AbstractRequestHandler):
-    """Handler for Hello World Intent."""
-    def can_handle(self, handler_input):
-        # type: (HandlerInput) -> bool
-        return ask_utils.is_intent_name("HelloWorldIntent")(handler_input)
-
-    def handle(self, handler_input):
-        # type: (HandlerInput) -> Response
-        speak_output = "Hello World!"
-
-        return (
-            handler_input.response_builder
-                .speak(speak_output)
-                # .ask("add a reprompt if you want to keep the session open for the user to respond")
-                .response
-        )
-        
 class MoveNorthIntentHandler(AbstractRequestHandler):
     """Handler for Moving North."""
     def can_handle(self, handler_input):
@@ -196,6 +184,7 @@ sb.add_request_handler(IntentReflectorHandler()) # make sure IntentReflectorHand
 sb.add_exception_handler(CatchAllExceptionHandler())
 
 app = Flask(__name__)
+app.config['ASK_SDK_VERIFY_TIMESTAMP'] = False
 skill_response = SkillAdapter(
     skill=sb.create(), skill_id='amzn1.ask.skill.327b488d-bf14-476a-8456-d092972cd5b5', app=app)
 
