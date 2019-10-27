@@ -1,5 +1,6 @@
 from flask import Flask
 import logging
+import sys
 import ask_sdk_core.utils as ask_utils
 import time
 from ask_sdk_core.skill_builder import SkillBuilder
@@ -17,12 +18,12 @@ logger.setLevel(logging.INFO)
 
 direction_slot = "direction"
 block_type_slot = "block_type"
-pos = "position"
-grid = "grid"
+pos_str = "position"
+grid_str = "grid"
 cols = 20
 rows = 20
 start_time_str = "start_time"
-build_time_limit = 30 # seconds
+build_time_limit = 60 # seconds
 
 def wrap_speak(speak_str):
 	return """<speak><voice name="Matthew">""" + speak_str + """</voice></speak>"""
@@ -36,8 +37,8 @@ class LaunchRequestHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         # type: (HandlerInput) -> Response
-        handler_input.attributes_manager.session_attributes[pos] = (0,0)
-        handler_input.attributes_manager.session_attributes[grid] = [[0]*cols]*rows
+        handler_input.attributes_manager.session_attributes[pos_str] = (int(cols/2), int(rows/2))
+        handler_input.attributes_manager.session_attributes[grid_str] = [[0]*cols]*rows
         speak_output = wrap_speak("""
 		<audio src="soundbank://soundlibrary/explosions/explosions/explosions_03"/>
 		AAAAH! Monsters are coming lets build defenses! You are on a {} by {} grid. What's your first order?""".format(cols, rows))
@@ -69,12 +70,51 @@ def is_time_up(input):
     else:
         return False
 
+block_sizes = ["2 by 2", "1 by 1", "3 by 3", "l", "1 by 2"]
+
 def is_correct_block(block_type):
     logger.error(block_type)
-    if block_type == "2 by 2" or block_type == "1 by 1" or block_type == "3 by 3" or block_type == "l block" or block_type == "1 by 2":
+    if block_type in block_sizes:
         return True
     else:
         return False
+
+def add_block_to_grid(block_type, x, y, grid):
+    if block_type == "2 by 2":
+        grid[x][y] += 1
+        grid[x+1][y] += 1
+        grid[x][y+1] += 1
+        grid[x+1][y+1] += 1
+    elif block_type == "1 by 1":
+        grid[x][y] += 1
+    elif block_type == "l":
+        grid[x][y] += 1
+        grid[x][y+1] += 1
+        grid[x+1][y+1] += 1
+    elif block_type == "3 by 3":
+        grid[x][y] += 1
+        grid[x+1][y] += 1
+        grid[x+2][y] += 1
+        grid[x][y+1] += 1
+        grid[x+2][y+1] += 1
+        grid[x+1][y+1] += 1
+        grid[x][y+2] += 1
+        grid[x+1][y+2] += 1
+        grid[x+2][y+2] += 1
+    elif block_type == "1 by 2":
+        grid[x][y] += 1
+        grid[x+1][y] += 1
+
+def print_grid(grid):
+    y = rows - 1
+    x = 0
+    while (y >= 0):
+        while (x < cols):
+            sys.stdout.write(str(grid[x][y]) + " ")
+            x += 1
+        sys.stdout.write("\n")
+        x = 0
+        y -= 1
 
 class BuildIntentHandler(AbstractRequestHandler):
     """Handler for building."""
@@ -102,6 +142,12 @@ class BuildIntentHandler(AbstractRequestHandler):
 
             # Check for correct block types
             if is_correct_block(block_type):
+                # Add logic to build something on the grid
+                x, y = handler_input.attributes_manager.session_attributes[pos_str]
+                grid = handler_input.attributes_manager.session_attributes[grid_str]
+                add_block_to_grid(block_type, x, y, grid)
+                handler_input.attributes_manager.session_attributes[grid_str] = grid
+                print_grid(grid)
                 speak_output = wrap_speak("You are building a {} block.".format(block_type))
             else:
                 speak_output = wrap_speak("Hmmmmm. I can't build a {} block.".format(block_type))
@@ -123,11 +169,11 @@ class MoveIntentHandler(AbstractRequestHandler):
     def handle(self, handler_input):
         # type: (HandlerInput) -> Response
         slots = handler_input.request_envelope.request.intent.slots
-        x, y = handler_input.attributes_manager.session_attributes[pos]
+        x, y = handler_input.attributes_manager.session_attributes[pos_str]
 
         if direction_slot in slots:
             direction = slots[direction_slot].value
-            x, y = handler_input.attributes_manager.session_attributes[pos]
+            x, y = handler_input.attributes_manager.session_attributes[pos_str]
             if (direction == "up" or direction == "north"):
                 y += 1
             elif (direction == "down" or direction == "south"):
@@ -137,7 +183,7 @@ class MoveIntentHandler(AbstractRequestHandler):
             else:
                 x += 1
 
-            handler_input.attributes_manager.session_attributes[pos] = (x, y)
+            handler_input.attributes_manager.session_attributes[pos_str] = (x, y)
             speak_output = wrap_speak("You are now at position {} , {}. What next?".format(x, y))
 
         return (
