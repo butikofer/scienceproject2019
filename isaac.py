@@ -20,10 +20,11 @@ direction_slot = "direction"
 block_type_slot = "block_type"
 pos_str = "position"
 grid_str = "grid"
+zombies_str = "zombies"
 cols = 20
 rows = 20
 start_time_str = "start_time"
-build_time_limit = 60 # seconds
+build_time_limit = 10 # seconds
 
 def wrap_speak(speak_str):
 	return """<speak><voice name="Matthew">""" + speak_str + """</voice></speak>"""
@@ -38,10 +39,11 @@ class LaunchRequestHandler(AbstractRequestHandler):
     def handle(self, handler_input):
         # type: (HandlerInput) -> Response
         handler_input.attributes_manager.session_attributes[pos_str] = (int(cols/2), int(rows/2))
+        x, y = handler_input.attributes_manager.session_attributes[pos_str]
         handler_input.attributes_manager.session_attributes[grid_str] = [[0]*cols]*rows
         speak_output = wrap_speak("""
 		<audio src="soundbank://soundlibrary/explosions/explosions/explosions_03"/>
-		AAAAH! Monsters are coming lets build defenses! You are on a {} by {} grid. What's your first order?""".format(cols, rows))
+		AAAAH! Monsters are coming lets build defenses! You are on a {} by {} grid at position {}, {}. What's your first order?""".format(cols, rows, x, y))
 
         return (
             handler_input.response_builder
@@ -69,6 +71,67 @@ def is_time_up(input):
         return True
     else:
         return False
+
+def create_normal_zombies(input):
+    z1 = (3,rows)
+    z2 = (8,rows)
+    z3 = (5,rows)
+    z4 = (10,rows)
+    z5 = (12,rows)
+
+    input.attributes_manager.session_attributes[zombies_str] = [z1, z2, z3, z4, z5]
+
+def move_zombies(input):
+
+    # Get a list of all zombies
+    zombies = input.attributes_manager.session_attributes[zombies_str]
+
+    # Get the grid to find out where blocks are
+    grid = input.attributes_manager.session_attributes[grid_str]
+
+    # where we are standing
+    pos = input.attributes_manager.session_attributes[pos_str]
+
+    # variable that make event talk stuff from alexa
+    script = ""
+
+    is_game_over = False
+
+    # Loop while zombies are still on the grid
+    while len(zombies) > 0 and not is_game_over:
+
+        updated_zombie_locations = []
+        
+        # Loop through every zombie and move it forward one if there are no blocks. If there is a block
+        # then destroy one of the blocks.
+        for zx, zy in zombies:
+            print("You are at %d, %d, zombie at %d %d" % (pos[0], pos[1], zx, zy))
+            if (zy-1) < 0:
+                # zombie moved off of grid or screen
+                continue
+            elif grid[zx][zy-1] > 0:
+                # Zombie destroys a block, but doesn't move forward
+                grid[zx][zy-1] -= 1
+                updated_zombie_locations.append((zx, zy))
+
+                # say zombie breaks block
+                script += """<audio src="soundbank://soundlibrary/wood/breaks/breaks_06"/> A zombie tore through a block! """
+            elif zx == pos[0] and (zy-1) == pos[1]:
+                script += """<audio src="soundbank://soundlibrary/human/amzn_sfx_baby_big_cry_01"/> uh oh you perished! game over!"""
+                is_game_over = True
+                break
+            elif grid[zx][zy-1] == 0:
+                # Move zombie forward, but don't say anything
+                zombie_pos = (zx, zy-1)
+                updated_zombie_locations.append(zombie_pos)
+
+        zombies = updated_zombie_locations
+
+    if not is_game_over:
+        script += """phew, they are gone"""
+
+    input.attributes_manager.session_attributes[grid_str] = grid
+    return is_game_over, script
 
 block_sizes = ["2 by 2", "1 by 1", "3 by 3", "l", "1 by 2"]
 
@@ -127,13 +190,21 @@ class BuildIntentHandler(AbstractRequestHandler):
         start_timer(handler_input)
 
         if is_time_up(handler_input):
-            speak_output = wrap_speak("oh no! they're coming!")
-            return(
-                handler_input.response_builder
-                .speak(speak_output)
-                .ask(speak_output)
-                .response
-            )
+            speak_output = "oh no! they're coming!"
+
+            create_normal_zombies(handler_input)
+            is_game_over, script = move_zombies(handler_input)
+            speak_output += script
+            speak_output = wrap_speak(speak_output)
+            result = handler_input.response_builder.speak(speak_output)
+
+            # Check to see if it is game over
+            if not is_game_over:
+                result = result.ask(speak_output)
+            else:
+                result = result.set_should_end_session(True)
+
+            return result.response
 
         slots = handler_input.request_envelope.request.intent.slots
         
