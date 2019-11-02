@@ -1,3 +1,4 @@
+# figured out these codes from looking online at tutorials
 from flask import Flask
 import logging
 import sys
@@ -14,7 +15,7 @@ from ask_sdk_model import Response
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# globals
+# global variables
 
 direction_slot = "direction"
 block_type_slot = "block_type"
@@ -26,6 +27,7 @@ rows = 20
 start_time_str = "start_time"
 build_time_limit = 60 # seconds
 
+# this makes it so all the words are using the same voice
 def wrap_speak(speak_str):
 	return """<speak><voice name="Matthew">""" + speak_str + """</voice></speak>"""
 
@@ -75,6 +77,7 @@ def is_time_up(input):
     else:
         return False
 
+# Make 5 normal zombies
 def create_normal_zombies():
     z1 = (3,rows)
     z2 = (8,rows)
@@ -155,8 +158,8 @@ def move_zombies(input, zombies):
     print(script)
     return is_game_over, script
 
+# Make sure that the blocks people ask for we can build
 block_sizes = ["2 by 2", "1 by 1", "3 by 3", "corner", "1 by 2"]
-
 def is_correct_block(block_type):
     logger.error(block_type)
     if block_type in block_sizes:
@@ -164,6 +167,7 @@ def is_correct_block(block_type):
     else:
         return False
 
+# this is where we build blocks by adding them to the grid
 def add_block_to_grid(block_type, x, y, grid):
     if block_type == "2 by 2":
         grid[x][y] += 1
@@ -190,6 +194,7 @@ def add_block_to_grid(block_type, x, y, grid):
         grid[x][y] += 1
         grid[x+1][y] += 1
 
+# This is used to help debug the program--it is something that a typical player won't see
 def print_grid(grid):
     y = rows - 1
     x = 0
@@ -391,6 +396,8 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
                 .ask(speak_output)
                 .response
         )
+
+# the below code was taken from a freely-available tutorial online
 
 # The SkillBuilder object acts as the entry point for your skill, routing all request and response
 # payloads to the handlers above. Make sure any new handlers or interceptors you've
