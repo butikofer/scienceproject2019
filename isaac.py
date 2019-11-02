@@ -1,3 +1,6 @@
+# Copyright Isaac Butikofer
+# Sego Lily Science Project 2019 - "Project Scorpion"
+
 # figured out these codes from looking online at tutorials
 from flask import Flask
 import logging
