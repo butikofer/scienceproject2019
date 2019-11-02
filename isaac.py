@@ -24,7 +24,7 @@ zombies_str = "zombies"
 cols = 20
 rows = 20
 start_time_str = "start_time"
-build_time_limit = 10 # seconds
+build_time_limit = 60 # seconds
 
 def wrap_speak(speak_str):
 	return """<speak><voice name="Matthew">""" + speak_str + """</voice></speak>"""
@@ -58,6 +58,9 @@ def get_time(input):
     else:
         return 0
 
+def reset_timer(input):
+    input.attributes_manager.session_attributes[start_time_str] = time.time()
+
 def start_timer(input):
     if get_time(input) == 0:
         input.attributes_manager.session_attributes[start_time_str] = time.time()
@@ -72,19 +75,37 @@ def is_time_up(input):
     else:
         return False
 
-def create_normal_zombies(input):
+def create_normal_zombies():
     z1 = (3,rows)
     z2 = (8,rows)
     z3 = (5,rows)
     z4 = (10,rows)
     z5 = (12,rows)
 
-    input.attributes_manager.session_attributes[zombies_str] = [z1, z2, z3, z4, z5]
+    return [z1, z2, z3, z4, z5]
 
-def move_zombies(input):
+def zombie_event(handler_input):
+    speak_output = "oh no! they're coming!"
+
+    zombies = create_normal_zombies()
+    is_game_over, script = move_zombies(handler_input, zombies)
+    speak_output += script
+    speak_output = wrap_speak(speak_output)
+    result = handler_input.response_builder.speak(speak_output)
+
+    # Check to see if it is game over
+    if not is_game_over:
+        reset_timer(handler_input)
+        result = result.ask(speak_output)
+    else:
+        result = result.set_should_end_session(True)
+
+    return result.response
+
+def move_zombies(input, zombies):
 
     # Get a list of all zombies
-    zombies = input.attributes_manager.session_attributes[zombies_str]
+    #zombies = input.attributes_manager.session_attributes[zombies_str]
 
     # Get the grid to find out where blocks are
     grid = input.attributes_manager.session_attributes[grid_str]
@@ -92,7 +113,7 @@ def move_zombies(input):
     # where we are standing
     pos = input.attributes_manager.session_attributes[pos_str]
 
-    # variable that make event talk stuff from alexa
+    # variable that make event talk stuff from Alexa
     script = ""
 
     is_game_over = False
@@ -117,7 +138,7 @@ def move_zombies(input):
                 # say zombie breaks block
                 script += """<audio src="soundbank://soundlibrary/wood/breaks/breaks_06"/> A zombie tore through a block! """
             elif zx == pos[0] and (zy-1) == pos[1]:
-                script += """<audio src="soundbank://soundlibrary/human/amzn_sfx_baby_big_cry_01"/> uh oh you perished! game over!"""
+                script += """<audio src="soundbank://soundlibrary/human/amzn_sfx_baby_big_cry_01"/> uh oh you perished! game over! """
                 is_game_over = True
                 break
             elif grid[zx][zy-1] == 0:
@@ -131,9 +152,10 @@ def move_zombies(input):
         script += """phew, they are gone"""
 
     input.attributes_manager.session_attributes[grid_str] = grid
+    print(script)
     return is_game_over, script
 
-block_sizes = ["2 by 2", "1 by 1", "3 by 3", "l", "1 by 2"]
+block_sizes = ["2 by 2", "1 by 1", "3 by 3", "corner", "1 by 2"]
 
 def is_correct_block(block_type):
     logger.error(block_type)
@@ -150,7 +172,7 @@ def add_block_to_grid(block_type, x, y, grid):
         grid[x+1][y+1] += 1
     elif block_type == "1 by 1":
         grid[x][y] += 1
-    elif block_type == "l":
+    elif block_type == "corner":
         grid[x][y] += 1
         grid[x][y+1] += 1
         grid[x+1][y+1] += 1
@@ -190,21 +212,7 @@ class BuildIntentHandler(AbstractRequestHandler):
         start_timer(handler_input)
 
         if is_time_up(handler_input):
-            speak_output = "oh no! they're coming!"
-
-            create_normal_zombies(handler_input)
-            is_game_over, script = move_zombies(handler_input)
-            speak_output += script
-            speak_output = wrap_speak(speak_output)
-            result = handler_input.response_builder.speak(speak_output)
-
-            # Check to see if it is game over
-            if not is_game_over:
-                result = result.ask(speak_output)
-            else:
-                result = result.set_should_end_session(True)
-
-            return result.response
+            return zombie_event(handler_input)
 
         slots = handler_input.request_envelope.request.intent.slots
         
@@ -239,23 +247,32 @@ class MoveIntentHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         # type: (HandlerInput) -> Response
-        slots = handler_input.request_envelope.request.intent.slots
-        x, y = handler_input.attributes_manager.session_attributes[pos_str]
+        start_timer(handler_input)
 
+        speak_output = ""
+
+        if is_time_up(handler_input):
+            return zombie_event(handler_input)
+
+        x, y = handler_input.attributes_manager.session_attributes[pos_str]
+        slots = handler_input.request_envelope.request.intent.slots
         if direction_slot in slots:
             direction = slots[direction_slot].value
             x, y = handler_input.attributes_manager.session_attributes[pos_str]
-            if (direction == "up" or direction == "north"):
+            if (direction == "up" or direction == "north" or direction == "forward"):
                 y += 1
-            elif (direction == "down" or direction == "south"):
+            elif (direction == "down" or direction == "south" or direction == "back" or direction == "backward"):
                 y -= 1
             elif (direction == "left" or direction == "west"):
                 x -= 1
-            else:
+            elif (direction == "right" or direction == "east"):
                 x += 1
+            else:
+                speak_output += "I don't know how to move in that direction. "
 
             handler_input.attributes_manager.session_attributes[pos_str] = (x, y)
-            speak_output = wrap_speak("You are now at position {} , {}. What next?".format(x, y))
+            speak_output += "You are now at position {}, {}. What next?".format(x, y)
+            speak_output = wrap_speak(speak_output)
 
         return (
             handler_input.response_builder
@@ -281,7 +298,23 @@ class HelpIntentHandler(AbstractRequestHandler):
                 .response
         )
 
+class FallbackIntentHandler(AbstractRequestHandler):
+    """Handler for fallback Intent."""
+    def can_handle(self, handler_input):
+        # type: (HandlerInput) -> bool
+        return ask_utils.is_intent_name("AMAZON.FallbackIntent")(handler_input)
 
+    def handle(self, handler_input):
+        # type: (HandlerInput) -> Response
+        speak_output = wrap_speak("I'm having trouble understanding. Try moving or building a block.")
+
+        return (
+            handler_input.response_builder
+                .speak(speak_output)
+                .ask(speak_output)
+                .response
+        )
+        
 class CancelOrStopIntentHandler(AbstractRequestHandler):
     """Single handler for Cancel and Stop Intent."""
     def can_handle(self, handler_input):
@@ -373,6 +406,7 @@ sb.add_request_handler(BuildIntentHandler())
 sb.add_request_handler(HelpIntentHandler())
 sb.add_request_handler(CancelOrStopIntentHandler())
 sb.add_request_handler(SessionEndedRequestHandler())
+sb.add_request_handler(FallbackIntentHandler())
 sb.add_request_handler(IntentReflectorHandler()) # make sure IntentReflectorHandler is last so it doesn't override your custom intent handlers
 sb.add_exception_handler(CatchAllExceptionHandler())
 
